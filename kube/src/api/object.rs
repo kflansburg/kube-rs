@@ -118,7 +118,7 @@ where
                 name: Some(name.to_string()),
                 ..Default::default()
             },
-            spec: spec,
+            spec,
             status: None,
         }
     }
