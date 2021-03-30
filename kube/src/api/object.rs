@@ -1,9 +1,12 @@
 use crate::{
-    api::metadata::{ListMeta, ObjectMeta, TypeMeta},
+    api::{
+        metadata::{ListMeta, ObjectMeta, TypeMeta},
+        GroupVersionKind, Resource,
+    },
     error::ErrorResponse,
 };
 use serde::{Deserialize, Serialize};
-use std::fmt::Debug;
+use std::{borrow::Cow, fmt::Debug};
 
 /// A raw event returned from a watch query
 ///
@@ -64,12 +67,12 @@ pub struct BookmarkMeta {
 
 /// A standard Kubernetes object with `.spec` and `.status`.
 ///
-/// This is a convenience struct provided for serialization/deserialization
-/// It is not useful within the library anymore, because it can not easily implement
-/// the [`k8s_openapi`] traits.
+/// This is a convenience struct provided for serialization/deserialization.
+/// It is slightly stricter than ['DynamicObject`] in that it enforces this newer struct
+/// spec/status convention, and as such will not work in general with all api-discovered resources.
 ///
-/// This is what Kubernetes maintainers tell you the world looks like.
-/// It's.. generally true.
+/// This can be used to tie existing resources to smaller, local struct variants to optimize for memory use.
+/// E.g. if you are only interested in a few fields, but you store tons of them in memory with reflectors.
 #[derive(Deserialize, Serialize, Clone)]
 pub struct Object<P, U>
 where
@@ -104,20 +107,69 @@ where
     P: Clone,
     U: Clone,
 {
-    /// A constructor like the one from kube-derive
-    pub fn new<K: k8s_openapi::Resource>(name: &str, spec: P) -> Self {
+    /// A constructor that takes Resource values from a `GroupVersionKind`
+    pub fn new(name: &str, gvk: &GroupVersionKind, spec: P) -> Self {
         Self {
             types: TypeMeta {
-                api_version: <K as k8s_openapi::Resource>::API_VERSION.to_string(),
-                kind: <K as k8s_openapi::Resource>::KIND.to_string(),
+                api_version: gvk.api_version.to_string(),
+                kind: gvk.kind.to_string(),
             },
             metadata: ObjectMeta {
                 name: Some(name.to_string()),
                 ..Default::default()
             },
-            spec,
+            spec: spec,
             status: None,
         }
+    }
+}
+
+impl<P, U> Resource for Object<P, U>
+where
+    P: Clone,
+    U: Clone,
+{
+    type DynamicType = GroupVersionKind;
+
+    fn group(dt: &GroupVersionKind) -> Cow<'_, str> {
+        dt.group.as_str().into()
+    }
+
+    fn version(dt: &GroupVersionKind) -> Cow<'_, str> {
+        dt.version.as_str().into()
+    }
+
+    fn kind(dt: &GroupVersionKind) -> Cow<'_, str> {
+        dt.kind.as_str().into()
+    }
+
+    fn api_version(dt: &GroupVersionKind) -> Cow<'_, str> {
+        dt.api_version.as_str().into()
+    }
+
+    fn plural(dt: &Self::DynamicType) -> Cow<'_, str> {
+        if let Some(plural) = &dt.plural {
+            plural.into()
+        } else {
+            // fallback to inference
+            crate::api::metadata::to_plural(&Self::kind(dt).to_ascii_lowercase()).into()
+        }
+    }
+
+    fn meta(&self) -> &ObjectMeta {
+        &self.metadata
+    }
+
+    fn name(&self) -> String {
+        self.metadata.name.clone().expect("missing name")
+    }
+
+    fn namespace(&self) -> Option<String> {
+        self.metadata.namespace.clone()
+    }
+
+    fn resource_ver(&self) -> Option<String> {
+        self.metadata.resource_version.clone()
     }
 }
 

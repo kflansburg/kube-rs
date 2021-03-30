@@ -9,15 +9,15 @@ use std::borrow::Cow;
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct GroupVersionKind {
     /// API group
-    group: String,
+    pub group: String,
     /// Version
-    version: String,
+    pub version: String,
     /// Kind
-    kind: String,
+    pub kind: String,
     /// Concatenation of group and version
-    api_version: String,
+    pub api_version: String,
     /// Optional plural/resource
-    plural: Option<String>,
+    pub plural: Option<String>,
 }
 
 impl GroupVersionKind {
